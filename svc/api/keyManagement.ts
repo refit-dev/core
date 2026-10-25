@@ -6,6 +6,7 @@ import db from "../store/db.ts";
 import config from "../../config.ts";
 import { redisCount } from "../store/redis.ts";
 import type Stripe from "stripe";
+import { getSubscriptionPeriodEnd } from './stripeSubscriptionPeriod';
 
 const stripeAPIPlan = config.STRIPE_API_PLAN;
 const keys = express.Router();
@@ -66,7 +67,7 @@ keys
         api_key,
       };
       const sub = await stripe.subscriptions.retrieve(subscription_id);
-      toReturn.current_period_end = sub.current_period_end;
+      toReturn.current_period_end = (getSubscriptionPeriodEnd(sub));
       return toReturn;
     };
     const getInvoices = async () => {
