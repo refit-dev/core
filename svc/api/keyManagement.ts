@@ -7,6 +7,29 @@ import config from "../../config.ts";
 import { redisCount } from "../store/redis.ts";
 import type Stripe from "stripe";
 
+type PeriodItem = { price?: { id?: string } | null };
+type PeriodField = 'current_period_start' | 'current_period_end';
+type PlanItem = (items: PeriodItem[]) => PeriodItem | undefined;
+
+// Typed like the removed field, which was also absent at runtime when Stripe omitted it.
+function subscriptionPeriod(subscription: object, field: PeriodField, planItem?: PlanItem): number {
+  const legacy: unknown = Reflect.get(subscription, field);
+  if (typeof legacy === 'number') return legacy;
+  const list: unknown = Reflect.get(subscription, 'items');
+  const data: unknown = list && typeof list === 'object' ? Reflect.get(list, 'data') : undefined;
+  const items = (Array.isArray(data) ? data : []).filter(
+    (item): item is PeriodItem => typeof item === 'object' && item !== null,
+  );
+  const periods = new Set(items.map((item) => Reflect.get(item, field)));
+  const chosen = periods.size === 1 ? items[0] : planItem?.(items);
+  const value: unknown = chosen ? Reflect.get(chosen, field) : undefined;
+  return (typeof value === 'number' ? value : undefined) as number;
+}
+
+function getSubscriptionPeriodEnd(subscription: object, planItem?: PlanItem): number {
+  return subscriptionPeriod(subscription, 'current_period_end', planItem);
+}
+
 const stripeAPIPlan = config.STRIPE_API_PLAN;
 const keys = express.Router();
 keys.use(bodyParser.json());
@@ -66,7 +89,7 @@ keys
         api_key,
       };
       const sub = await stripe.subscriptions.retrieve(subscription_id);
-      toReturn.current_period_end = sub.current_period_end;
+      toReturn.current_period_end = (getSubscriptionPeriodEnd(sub));
       return toReturn;
     };
     const getInvoices = async () => {
